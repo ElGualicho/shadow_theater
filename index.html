@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sun — Scroll Animation</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      background: #fff;
+      overflow-x: hidden;
+      scrollbar-width: none;
+    }
+    body::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
+    }
+
+    /* Tall wrapper drives scroll progress */
+    #scroll-wrapper { height: 20000px; }
+
+    /* Scene is fixed/scaled to viewport — all px values match Figma 1920×1080 */
+    #scene {
+      position: fixed;
+      top: 0; left: 0;
+      width: 1920px; height: 1080px;
+      transform-origin: top left;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    /* ── Layer stack ─────────────────────────── */
+
+    #paper-texture {
+      position: absolute; left: 0; top: 0;
+      width: 1920px; height: 1080px;
+      object-fit: cover; z-index: 1;
+      pointer-events: none;
+    }
+
+    /* z2 – Sun (rises from bottom) */
+    #sun {
+      position: absolute;
+      left: 412px; top: 0;
+      width: 1095px; height: 596px;
+      object-fit: cover; z-index: 2;
+    }
+
+    /* z3 – Pagode (rises from bottom) */
+    /* FIX: top corrigé de 130px → 123px (valeur Figma exacte).
+       pagodeFightStart.top=-1072.42 était déjà calculé pour top=123 :
+       pivot_y = 123 + 957*48.42% = 586.38 → top_zoomed = 586.38 - 463.38*3.58 = -1072.5 ✓ */
+    #pagode {
+      position: absolute;
+      left: 726px; top: 123px;
+      width: 450px; height: 957px;
+      z-index: 3;
+    }
+
+    /* z4 – Grass (rises from bottom) */
+    #grass {
+      position: absolute;
+      left: -95px; top: 483px;
+      width: 2036px; height: 607px;
+      z-index: 4;
+    }
+
+    /* z5 – Clouds (slide in from sides) */
+    #cloud-left {
+      position: absolute;
+      left: 193px; top: 265px;
+      width: 490px; height: 131px;
+      z-index: 5;
+    }
+    /* Wrapper handles x translation; inner img handles mirror */
+    #cloud-right-wrapper {
+      position: absolute;
+      left: 1280px; top: 363px;
+      width: 490px; height: 131px;
+      z-index: 5;
+    }
+    #cloud-right {
+      position: absolute; left: 0; top: 0;
+      width: 490px; height: 131px;
+      transform: scaleX(-1);
+    }
+
+    /* z6 – Crane + Leaves */
+    #crane {
+      position: absolute; left: 0; top: 0;
+      width: 330px; height: 185px;
+      z-index: 6;
+    }
+    .leaf { position: absolute; left: 0; top: 0; z-index: 6; }
+    #leaf-1 { width: 141px; height: 142px; }
+    #leaf-2 { width: 107px; height: 116px; }
+    #leaf-3 { width:  73px; height:  88px; }
+    #leaf-4 { width:  75px; height:  75px; }
+
+    /* z7 – Pagode-fight overlay (zoom transition) */
+    #pagode-fight-container {
+      position: absolute; left: 0; top: 0;
+      width: 1920px; height: 1080px;
+      overflow: hidden; z-index: 7;
+      opacity: 0;
+    }
+    #pagode-fight { position: absolute; }
+
+    /* z7 – Mountains (behind torn paper) */
+    #mountains {
+      position: absolute;
+      left: -1003px; top: 574px;
+      width: 4113px; height: 707px;
+      z-index: 7; opacity: 0;
+      filter: brightness(0);
+    }
+
+    /* z8 – Diagonal rectangle transition (Figma frames 39:12→39:25) */
+    #rect1 {
+      position: absolute;
+      left: -690px; top: -250px;
+      width: 2918px; height: 2369px;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 8; opacity: 0;
+    }
+    #rect2 {
+      position: absolute;
+      left: -3px; top: -1290px;
+      width: 2918px; height: 2369px;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 8; opacity: 0;
+    }
+    #rect1-inner, #rect2-inner {
+      width: 1210px; height: 2668px;
+      background: #000;
+      flex-shrink: 0;
+    }
+    #rect1-inner { transform: rotate(-60.42deg); }
+    #rect2-inner { transform: rotate(119.58deg); }
+
+    /* z9 – Torii */
+    #torii {
+      position: absolute;
+      left: 540px; top: 277px;
+      width: 805px; height: 529px;
+      z-index: 9; opacity: 0;
+    }
+
+    /* z9 – Personnages marchants (même couche que torii, devant montagnes, derrière branches) */
+    #samurai {
+      position: absolute; left: 0; top: 0;
+      width: 142px; height: 262px;
+      z-index: 9; opacity: 0;
+    }
+    #monk {
+      position: absolute; left: 0; top: 0;
+      width: 163px; height: 273px;
+      z-index: 9; opacity: 0;
+    }
+    #archer {
+      position: absolute; left: 0; top: 0;
+      width: 204px; height: 285px;
+      z-index: 9; opacity: 0;
+    }
+    #kid {
+      position: absolute; left: 0; top: 0;
+      width: 127px; height: 205px;
+      z-index: 9; opacity: 0;
+    }
+
+    /* z10 – Dragon */
+    #dragon {
+      position: absolute;
+      left: -1055px; top: 6px;
+      width: 972px; height: 445px;
+      z-index: 10; opacity: 0;
+    }
+
+    /* z11 – Tree branches (avant-plan, scène montagne) */
+    #tree-branches-left {
+      position: absolute;
+      left: -422px; top: 28px;
+      width: 1045px; height: 228px;
+      z-index: 11; opacity: 0;
+    }
+    #tree-branches-right {
+      position: absolute;
+      left: auto; right: -45px; top: -18px;
+      width: 541px; height: 313px;
+      z-index: 11; opacity: 0;
+      transform-origin: center center;
+    }
+
+    /* Scroll hint */
+    #hint {
+      position: fixed;
+      bottom: 32px; left: 50%;
+      transform: translateX(-50%);
+      font-family: system-ui, sans-serif;
+      font-size: 13px; letter-spacing: 0.15em;
+      color: rgba(0,0,0,0.4);
+      text-transform: uppercase;
+      z-index: 100;
+      animation: hintPulse 2s ease-in-out infinite;
+      pointer-events: none;
+      user-select: none;
+    }
+    @keyframes hintPulse {
+      0%, 100% { opacity: 0.5; transform: translateX(-50%) translateY(0); }
+      50%       { opacity: 1;   transform: translateX(-50%) translateY(-4px); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="scroll-wrapper">
+  <div id="scene">
+
+    <!-- z1 Paper texture (always visible) -->
+    <img id="paper-texture"
+      src="./assets/paper-texture.png" alt="">
+
+    <!-- z2 Sun -->
+    <img id="sun"
+      src="./assets/sun.png" alt="">
+
+    <!-- z3 Pagode -->
+    <img id="pagode"
+      src="./assets/pagoda.svg" alt="">
+
+    <!-- z4 Grass -->
+    <img id="grass"
+      src="./assets/grass.svg" alt="">
+
+    <!-- z5 Clouds -->
+    <img id="cloud-left"
+      src="./assets/clouds-left.svg" alt="">
+    <div id="cloud-right-wrapper">
+      <img id="cloud-right"
+        src="./assets/cloud-right.svg" alt="">
+    </div>
+
+    <!-- z6 Crane -->
+    <img id="crane"
+      src="./assets/crane.svg" alt="">
+
+    <!-- z6 Leaves -->
+    <img id="leaf-1" class="leaf"
+      src="./assets/leaf-1.svg" alt="">
+    <img id="leaf-2" class="leaf"
+      src="./assets/leaf-2.svg" alt="">
+    <img id="leaf-3" class="leaf"
+      src="./assets/leaf-3.svg" alt="">
+    <img id="leaf-4" class="leaf"
+      src="./assets/leaf-4.svg" alt="">
+
+    <!-- z7 Pagode-fight zoom transition -->
+    <div id="pagode-fight-container">
+      <img id="pagode-fight"
+        src="./assets/pagoda-fight-full.svg" alt="">
+    </div>
+
+    <!-- z7 Mountains (revealed under torn paper) -->
+    <img id="mountains"
+      src="./assets/mountains-1.svg" alt="">
+
+    <!-- z8 Rectangles diagonaux (transition pagode-fight → montagne) -->
+    <div id="rect1"><div id="rect1-inner"></div></div>
+    <div id="rect2"><div id="rect2-inner"></div></div>
+
+    <!-- z9 Torii -->
+    <img id="torii"
+      src="./assets/torii.svg" alt="">
+
+    <!-- z9 Personnages (Phase 11 — marchent de gauche à droite) -->
+    <img id="samurai" src="./assets/samurai.svg" alt="">
+    <img id="monk"    src="./assets/monk.svg"    alt="">
+    <img id="archer"  src="./assets/archer.svg"  alt="">
+    <img id="kid"     src="./assets/kid.svg"     alt="">
+
+    <!-- z10 Dragon -->
+    <img id="dragon"
+      src="./assets/dragon.svg" alt="">
+
+    <!-- z11 Tree branches -->
+    <img id="tree-branches-left"
+      src="./assets/tree-branches-left.svg" alt="">
+    <img id="tree-branches-right"
+      src="./assets/tree-branches-right.svg" alt="">
+
+  </div>
+</div>
+
+<div id="hint">↓ Scroll</div>
+
+<script>
+  gsap.registerPlugin(ScrollTrigger);
+
+  // Valeurs recalées : pagode-fight doit se caler sur la pagode zoomée,
+  // mais on garde les dimensions Figma du fichier pagoda-fight-full.svg.
+
+  // Alignement exact : pagoda-fight-full.svg a maintenant le même canvas/viewBox que pagoda.svg.
+  // On place donc pagode-fight sur la boîte réelle de la pagode après son zoom x3.58.
+  const pagodeFightStart = {
+    left: 98.48,
+    top: -1072.42,
+    width: 1611,
+    height: 3430
+  };
+
+  // ── Scale scene to viewport (cover mode) ──────────────────────────
+  function scaleScene() {
+    const s   = document.getElementById('scene');
+    const sx  = window.innerWidth  / 1920;
+    const sy  = window.innerHeight / 1080;
+    // Léger overscan pour éviter les micro-bandes en plein écran.
+    const edgeBleed = 1.01;
+    const sc  = Math.max(sx, sy) * edgeBleed;
+    const ox  = (window.innerWidth  - 1920 * sc) / 2;
+    const oy  = (window.innerHeight - 1080 * sc) / 2;
+    s.style.transform = `scale(${sc})`;
+    s.style.left      = ox + 'px';
+    s.style.top       = oy + 'px';
+  }
+  scaleScene();
+  window.addEventListener('resize', scaleScene);
+
+  // ── Initial states ────────────────────────────────────────────────
+
+  gsap.set('#sun',              { y: 1080 });
+  gsap.set('#cloud-left',       { x: -730 });
+  gsap.set('#cloud-right-wrapper', { x: 1030 });
+  gsap.set('#pagode',           { y: 980, transformOrigin: '54.05% 48.42%' });
+  gsap.set('#grass',            { y: 600 });
+
+  // Crane: off left — apparaît AVANT leaf-1
+  gsap.set('#crane',  { x: -354, y: 552, opacity: 0 });
+
+  // Leaf: démarre à 60% opacité depuis le bas de l'écran
+  gsap.set('#leaf-1', { x:  297, y: 1080, opacity: 0.6, rotation:  15 });
+  gsap.set('#leaf-2', { x:  297, y: 1080, opacity: 0.6, rotation:  15 });
+  gsap.set('#leaf-3', { x:  297, y: 1080, opacity: 0.6, rotation:  15 });
+  gsap.set('#leaf-4', { x:  297, y: 1080, opacity: 0.6, rotation:  15 });
+
+
+
+  // Autres feuilles : invisibles, sous l'écran
+  gsap.set('#leaf-2', { x:  609, y: 1114, opacity: 0, rotation: -20 });
+  gsap.set('#leaf-3', { x: 1201, y: 1013, opacity: 0, rotation:  10 });
+  gsap.set('#leaf-4', { x: 1518, y: 1155, opacity: 0, rotation: -15 });
+
+  // Pagode-fight: position Figma frame 18:272
+  gsap.set('#pagode-fight', pagodeFightStart);
+  
+  gsap.set('#mountains', { y: 0 });
+  gsap.set('#torii',     { y: 650 });
+  gsap.set('#dragon',    { x: 2975 });
+
+  // Tree branches: off-screen gauche/droite (mirrored pour la droite)
+  // left:  CSS left=-422, start x=-422-610=-1032 (Figma frame 39:51)
+  // right: CSS right=-45px, start x=580  (off-screen droite), scaleX:-1
+  gsap.set('#tree-branches-left',  { x: -610,          opacity: 0 });
+  gsap.set('#tree-branches-right', { x:  580, scaleX: -1, opacity: 0 });
+
+  // Personnages : hors-champ gauche, invisible — seront animés en Phase 11
+  // y initial = floor_y − CSS_h (aligné sur la bordure montagne dès l'entrée)
+  gsap.set('#samurai', { x: -200, y: 693, opacity: 0, transformOrigin: 'center center' });
+  gsap.set('#monk',    { x: -200, y: 693, opacity: 0, transformOrigin: 'center center' });
+  gsap.set('#archer',  { x: -200, y: 719, opacity: 0, transformOrigin: 'center center' });
+  gsap.set('#kid',     { x: -200, y: 801, opacity: 0, transformOrigin: 'center center' });
+
+  // Hint scroll
+  ScrollTrigger.create({
+    trigger: '#scroll-wrapper', start: 'top top+=10',
+    onEnter:    () => document.getElementById('hint').style.display = 'none',
+    onLeaveBack:() => document.getElementById('hint').style.display = 'block'
+  });
+
+  // ── Main timeline ──────────────────────────────────────────────────
+  // Scroll étendu à 20 000 px pour accommoder la Phase 11 (personnages).
+  // Toutes les unités existantes (0–40) sont préservées ; seul le rapport
+  // px/unité augmente légèrement (~375 → ~385 px/unité), imperceptible.
+  const tl = gsap.timeline({
+    scrollTrigger: {
+      trigger: '#scroll-wrapper',
+      start: 'top top', end: 'bottom bottom',
+      scrub: 1.5
+    }
+  });
+
+  // ╔══════════════════════════════════════════════╗
+  // ║  PHASE 1 (0–2)  SOLEIL SE LÈVE             ║
+  // ╚══════════════════════════════════════════════╝
+  tl.to('#sun', { y: 0, duration: 2, ease: 'power2.out' }, 0);
+
+  // ╔══════════════════════════════════════════════╗
+  // ║  PHASE 2 (1–3)  NUAGES                     ║
+  // ╚══════════════════════════════════════════════╝
+  tl.to('#cloud-left',          { x: 0, duration: 2, ease: 'power2.out' }, 1);
+  tl.to('#cloud-right-wrapper', { x: 0, duration: 2, ease: 'power2.out' }, 1);
+
+  // ╔══════════════════════════════════════════════╗
+  // ║  PHASE 3 (3–5)  PAGODE SE LÈVE             ║
+  // ╚══════════════════════════════════════════════╝
+  tl.to('#pagode', { y: 0, duration: 2, ease: 'power2.out' }, 3);
+
+  // ╔══════════════════════════════════════════════╗
+  // ║  PHASE 4 (4–5.5)  HERBE                    ║
+  // ╚══════════════════════════════════════════════╝
+  tl.to('#grass', { y: 0, duration: 1.5, ease: 'power2.out' }, 4);
+
+  // ╔══════════════════════════════════════════════╗
+  // ║  PHASE 5a (5–8)  CRANE (avant leaf-1)      ║
+  // ╚══════════════════════════════════════════════╝
+  tl.to('#crane', { opacity: 1, duration: 0.3 }, 5);
+  tl.to('#crane', { x: 1544, y: -165, duration: 8, ease: 'power1.inOut' }, 5);
+
+  // ╔══════════════════════════════════════════════╗
+  // ║  PHASE 5b (7.5–14)  FEUILLES               ║
+  // ╚══════════════════════════════════════════════╝
+  // Leaf-1 : 60% opacité dès le départ, monte depuis le bas
+  tl.to('#leaf-1', { y: -71, x: 1402, rotation: 45, duration: 6.5, ease: 'power1.inOut' }, 7.5);
+
+  // Leaves 2-4 : apparaissent normalement après
+  tl.to('#leaf-2', { opacity: 0.6, duration: 0.5 }, 8.5);
+  tl.to('#leaf-2', { x:  438, y:  57,  rotation: -35, duration: 5.5, ease: 'power1.inOut' }, 8.5);
+
+  tl.to('#leaf-3', { opacity: 0.6, duration: 0.5 }, 9.5);
+  tl.to('#leaf-3', { x: 1150, y: 302,  rotation:  25, duration: 5,   ease: 'power1.inOut' }, 9.5);
+
+  tl.to('#leaf-4', { opacity: 0.6, duration: 0.5 }, 10.5);
+  tl.to('#leaf-4', { x: 1735, y: 419,  rotation: -25, duration: 4.5, ease: 'power1.inOut' }, 10.5);
+
+  // ╔══════════════════════════════════════════════════════════╗
+  // ║  PHASE 6a (13–15)  ZOOM SUR LE PAGODE (asset pagode)  ║
+  // ║  Transition cinématique avant le pagode-fight           ║
+  // ╚══════════════════════════════════════════════════════════╝
+  // Éléments secondaires disparaissent
+  tl.to(['#sun','#grass','#cloud-left','#cloud-right-wrapper'],
+    { opacity: 0, duration: 1.5 }, 13);
+  tl.to(['#crane','#leaf-1','#leaf-2','#leaf-3','#leaf-4'],
+    { opacity: 0, duration: 1 }, 13.5);
+
+  // Zoom progressif sur la pagode (transformOrigin: haut-centre de la pagode)
+  tl.to('#pagode', { scale: 3.58, duration: 2, ease: 'power2.in' }, 13);
+
+  // ╔══════════════════════════════════════════════════════════╗
+  // ║  PHASE 6b (15–26)  PAGODE-FIGHT — ZOOM CONTINU        ║
+  // ║  Continue de zoomer au scroll sur toute la phase       ║
+  // ╚══════════════════════════════════════════════════════════╝
+  // Le pagode-fight remplace la pagode sans long chevauchement visuel.
+  // Fondu court : on évite le double-contour visible sur les bords de la pagode.
+  tl.to('#pagode-fight-container', { opacity: 1, duration: 0.35, ease: 'power2.out' }, 15.0);
+  tl.to('#pagode', { opacity: 0, duration: 0.28, ease: 'power2.in' }, 15.12);
+
+  // Zoom continu step 1 → frame 18:285  (5 unités)
+  tl.to('#pagode-fight', {
+    left: -1239, top: -3922, width: 4323, height: 9191,
+    duration: 5, ease: 'none'
+  }, 15.45);
+
+  // Zoom continu step 2 → frame 34:9   (5 unités supplémentaires)
+  tl.to('#pagode-fight', {
+    left: -2743, top: -6850, width: 7226, height: 15332,
+    duration: 5, ease: 'none'
+  }, 20.5);
+
+  // ╔══════════════════════════════════════════════╗
+  // ║  PHASE 7 (26–30)  RECTANGLES → MONTAGNE    ║
+  // ╚══════════════════════════════════════════════╝
+  // Rectangles : apparition progressive au lieu d'un cut instantané.
+  // On lance le mouvement plus tôt pour éviter l'effet de blocage plein écran.
+  tl.to(['#rect1','#rect2'], { opacity: 1, duration: 0.55, ease: 'power1.inOut' }, 25.75);
+  tl.to('#pagode-fight-container', { opacity: 0, duration: 1.1, ease: 'power1.inOut' }, 25.9);
+
+  // Montagnes révélées plus tôt et plus progressivement derrière la transition.
+  tl.to('#mountains', { opacity: 1, duration: 1.2, ease: 'power1.inOut' }, 26.05);
+
+  // Rect 1 glisse bas-gauche — le mouvement commence pendant le fade-in.
+  // Δx=-2300 → left=-675-2300=-2975, bord droit=-2975+2918=-57 (off screen ✓)
+  tl.to('#rect1', { x: -2300, y: 1382, duration: 3.4, ease: 'power2.inOut' }, 26.1);
+
+  // Rect 2 glisse haut-droit — direction symétrique.
+  // Δx=+2000 → left=-19+2000=1981 > 1920 (off screen ✓)
+  tl.to('#rect2', { x: 2000,  y: -1200, duration: 3.4, ease: 'power2.inOut' }, 26.1);
+
+  tl.to(['#rect1','#rect2'], { opacity: 0, duration: 0.75, ease: 'power1.inOut' }, 29.35);
+
+  // ╔══════════════════════════════════════════════╗
+  // ║  PHASE 8 (29.5–31)  TREE BRANCHES          ║
+  // ║  Arrivent avant le torii (frame 71:130)     ║
+  // ╚══════════════════════════════════════════════╝
+  tl.to('#tree-branches-left',  { opacity: 1, duration: 0 }, 29.5);
+  tl.to('#tree-branches-left',  { x: 0, duration: 1.5, ease: 'power2.out' }, 29.5);
+  tl.to('#tree-branches-right', { opacity: 1, duration: 0 }, 29.5);
+  tl.to('#tree-branches-right', { x: 0, duration: 1.5, ease: 'power2.out' }, 29.5);
+
+  // ╔══════════════════════════════════════════════╗
+  // ║  PHASE 9 (31–33)  TORII                    ║
+  // ╚══════════════════════════════════════════════╝
+  tl.to('#torii', { opacity: 1, duration: 0.5 }, 31);
+  tl.to('#torii', { y: 0, duration: 2, ease: 'power2.out' }, 31);
+
+  // ╔══════════════════════════════════════════════════════════╗
+  // ║  PHASE 10 supprimée — le dragon n'apparaît qu'avec      ║
+  // ║  les personnages en Phase 11, dès la fin du torii.      ║
+  // ╚══════════════════════════════════════════════════════════╝
+
+  // Hold court avant le démarrage des personnages
+  tl.to({}, { duration: 0.5 }, 33);
+
+  // ╔══════════════════════════════════════════════════════════════════════╗
+  // ║  PHASE 11 (33–52)  PERSONNAGES + DRAGON                            ║
+  // ║                                                                      ║
+  // ║  · Démarre dès la fin du torii (unit 33)                            ║
+  // ║  · 9 keyframes proportionnels au canvas Figma (Δ=10 784 px)        ║
+  // ║  · Y calés sur la bordure mountain :                                ║
+  // ║      GSAP_y = Figma_y + Figma_h − CSS_h   (floor constant)         ║
+  // ║  · Bob vers le bas (+y) : jamais au-dessus de la bordure            ║
+  // ║  · Retournement à t=1.0 (unit 43), hold long → flip à ~80% scroll  ║
+  // ╚══════════════════════════════════════════════════════════════════════╝
+
+  const P11_START = 33;   // right after torii
+  const P11_DUR   = 10;   // inclut le pré-passage dragon + marche personnages
+  const BOB_AMT   = 0;    // 0 = respect strict des exports Figma, aucun rebond ajouté
+
+  // ── Dragon : trajectoire recalée sur les exports PNG ─────────────────────
+  // Note : #dragon a déjà left:-1055px; top:6px en CSS.
+  // Les x/y ci-dessous sont donc les valeurs GSAP, pas les coordonnées écran brutes.
+  tl.to('#dragon', { opacity: 0, duration: 0 }, 32.9);   // reset opacity si scrub back
+  tl.set('#dragon', { x: 2677, y: 109 }, 32.95);         // frame dragon seul, avant les persos
+  tl.to('#dragon',  { opacity: 1, duration: 0.85, ease: 'power2.out' }, 33.0);
+
+  const dragonKF = [
+    { t: 0.000, x: 2677, y:  109 }, // frame export : dragon seul, hors champ droit
+    { t: 0.100, x: 2238, y:  -83 }, // 108:2
+    { t: 0.200, x: 1876, y: -175 }, // 108:13
+    { t: 0.310, x: 1456, y: -175 }, // 108:25
+    { t: 0.420, x:  998, y:   -1 }, // 108:38
+    { t: 0.540, x:  808, y:  219 }, // 108:52
+    { t: 0.660, x:  425, y:  600 }, // 110:129
+    { t: 0.780, x:  186, y:  699 }, // 110:155
+    { t: 0.900, x:   36, y:  699 }, // 110:168
+    { t: 1.000, x: -170, y:  699 }, // sortie / frame finale sans dragon
+  ];
+
+  for (let i = 0; i < dragonKF.length - 1; i++) {
+    const da = dragonKF[i], db = dragonKF[i + 1];
+    tl.to('#dragon', {
+      x: db.x, y: db.y,
+      duration: (db.t - da.t) * P11_DUR,
+      ease: 'none'
+    }, P11_START + da.t * P11_DUR);
+  }
+  tl.to('#dragon', { opacity: 0, duration: 0.6 }, P11_START + 0.90 * P11_DUR);
+
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║  TRAJECTOIRES PERSONNAGES — RECALÉES SUR LES EXPORTS PNG FIGMA         ║
+  // ║                                                                          ║
+  // ║  Les valeurs ci-dessous sont des positions GSAP top-left directes.       ║
+  // ║  Elles ne reçoivent plus d'offset vertical automatique.                  ║
+  // ║  Objectif : suivre la silhouette mountain exactement comme la maquette.  ║
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+
+  const CHAR_Y_OFFSET = {
+    '#samurai': 0,
+    '#monk':    0,
+    '#archer':  0,
+    '#kid':     0,
+  };
+
+  // Apparition douce des personnages :
+  // chaque asset part légèrement derrière et plus bas, puis rejoint son premier point Figma.
+  // Le trajet principal reste ensuite calé sur les keyframes exportées.
+  const APPEAR_TIME = 0.85; // durée en unités de timeline
+  const APPEAR_DX   = -90;  // départ légèrement en arrière
+  const APPEAR_DY   = 14;   // départ légèrement plus bas pour éviter l'effet de flottement
+
+  // Rebond façon théâtre d'ombres :
+  // Les personnages gardent leurs points Figma exacts, mais entre deux points
+  // ils sont très légèrement soulevés puis reposés, comme manipulés à la main.
+  const CHAR_BOUNCE = {
+    '#samurai': 12,
+    '#monk':    10,
+    '#archer':  13,
+    '#kid':     15,
+  };
+
+  // Durée d'un petit cycle de soulèvement/reposé.
+  // Plus la valeur est basse, plus le rebond est fréquent.
+  const CHAR_BOUNCE_STEP = {
+    '#samurai': 0.36,
+    '#monk':    0.42,
+    '#archer':  0.34,
+    '#kid':     0.30,
+  };
+
+  // Très légère oscillation de rotation pour éviter un déplacement trop mécanique.
+  const CHAR_BOUNCE_ROT = {
+    '#samurai': 1.1,
+    '#monk':    0.8,
+    '#archer':  1.2,
+    '#kid':     1.4,
+  };
+
+  function addCharacterWalkKF(el, initX, initY, keyframes) {
+    const off       = CHAR_Y_OFFSET[el] || 0;
+    const firstKF   = keyframes[0];
+    const firstAbs  = P11_START + firstKF.t * P11_DUR;
+    const appearAbs = Math.max(P11_START, firstAbs - APPEAR_TIME);
+    const amp       = CHAR_BOUNCE[el] || 10;
+    const stepBase  = CHAR_BOUNCE_STEP[el] || 0.36;
+    const rotAmp    = CHAR_BOUNCE_ROT[el] || 1;
+
+    // Reset propre si l'utilisateur scroll en arrière.
+    tl.set(el, {
+      x: firstKF.x + APPEAR_DX,
+      y: firstKF.y + off + APPEAR_DY,
+      opacity: 0,
+      scaleX: 1,
+      rotation: 0,
+      transformOrigin: '50% 92%'
+    }, appearAbs);
+
+    // Entrée progressive : fondu + glissement léger jusqu'au premier point exact Figma.
+    tl.to(el, {
+      opacity: 1,
+      x: firstKF.x,
+      y: firstKF.y + off,
+      rotation: 0,
+      duration: firstAbs - appearAbs,
+      ease: 'power2.out'
+    }, appearAbs);
+
+    // Trajet principal : interpolation entre les points de la maquette,
+    // avec un petit soulèvement intermédiaire. Le dernier pas de chaque segment
+    // retombe toujours sur le y Figma exact.
+    for (let i = 0; i < keyframes.length - 1; i++) {
+      const a = { ...keyframes[i],     y: keyframes[i].y     + off };
+      const b = { ...keyframes[i + 1], y: keyframes[i + 1].y + off };
+      const tA     = P11_START + a.t * P11_DUR;
+      const tB     = P11_START + b.t * P11_DUR;
+      const segDur = tB - tA;
+      if (segDur <= 0) continue;
+
+      const cycles    = Math.max(1, Math.round(segDur / stepBase));
+      const totalStep = cycles * 2; // montée + repose
+      const stepDur   = segDur / totalStep;
+
+      for (let j = 1; j <= totalStep; j++) {
+        const p     = j / totalStep;
+        const x     = Math.round(a.x + (b.x - a.x) * p);
+        const baseY = Math.round(a.y + (b.y - a.y) * p);
+
+        // j impair = soulèvement, j pair = retour au tracé exact.
+        // Sur le dernier step, on force lift=0 pour finir pile sur la frame Figma.
+        const isLiftStep = (j % 2 === 1) && (j !== totalStep);
+        const lift       = isLiftStep ? -amp : 0;
+        const rot        = isLiftStep ? ((j % 4 === 1) ? -rotAmp : rotAmp) : 0;
+
+        tl.to(el, {
+          x,
+          y: baseY + lift,
+          rotation: rot,
+          duration: stepDur,
+          ease: 'sine.inOut'
+        }, tA + (j - 1) * stepDur);
+      }
+    }
+  }
+
+  // ── Keyframes personnages issues des exports PNG ──────────────────────────
+  // Ordre visuel : kid → archer → monk → samurai, le samurai ouvre la marche.
+  // La frame finale garde les personnages visibles, le dragon disparaît.
+
+  addCharacterWalkKF('#samurai', -200, 694, [
+    { t: 0.100, x: -108, y: 2400},
+    { t: 0.200, x:   28, y: 700 },
+    { t: 0.310, x:  178, y: 654 },
+    { t: 0.420, x:  348, y: 654 },
+    { t: 0.540, x:  472, y: 706 },
+    { t: 0.660, x:  611, y: 600 },
+    { t: 0.780, x: 1134, y: 590 },
+    { t: 0.900, x: 1709, y: 803 },
+    { t: 1.000, x: 1712, y: 753 },
+  ]);
+
+  addCharacterWalkKF('#monk', -200, 680, [
+    { t: 0.310, x:    0, y: 700 },
+    { t: 0.420, x:  149, y: 630 },
+    { t: 0.540, x:  285, y: 650 },
+    { t: 0.660, x:  485, y: 646 },
+    { t: 0.780, x:  887, y: 481 },
+    { t: 0.900, x: 1557, y: 772 },
+    { t: 1.000, x: 1539, y: 772 },
+  ]);
+
+  addCharacterWalkKF('#archer', -200, 717, [
+    { t: 0.420, x:  -34, y: 767 },
+    { t: 0.540, x:   94, y: 618 },
+    { t: 0.660, x:  299, y: 661 },
+    { t: 0.780, x:  719, y: 600 },
+    { t: 0.900, x: 1397, y: 685 },
+    { t: 1.000, x: 1396, y: 698 },
+  ]);
+
+  addCharacterWalkKF('#kid', -200, 766, [
+    { t: 0.540, x:    9, y: 800 },
+    { t: 0.660, x:  204, y: 740 },
+    { t: 0.780, x:  578, y: 720 },
+    { t: 0.900, x: 1258, y: 672 },
+    { t: 1.000, x: 1264, y: 692 },
+  ]);
+
+  // ╔══════════════════════════════════════════════════════════════════╗
+  // ║  RETOURNEMENT — squish-flip en cascade, immédiat après la marche ║
+  // ║  FLIP_START = P11_START + P11_DUR  (= 43, fin exacte de la marche) ║
+  // ║  Hold final (9 unités) pour laisser la scène finale visible.    ║
+  // ╚══════════════════════════════════════════════════════════════════╝
+
+  const FLIP_START = P11_START + P11_DUR;  // flip dès l'arrivée au dernier frame Figma
+  const SQUISH     = 0.25;
+
+  tl.to('#kid',     { scaleX:  0, duration: SQUISH, ease: 'power2.in'  }, FLIP_START);
+  tl.to('#kid',     { scaleX: -1, duration: SQUISH, ease: 'power2.out' }, FLIP_START + SQUISH);
+
+  tl.to('#archer',  { scaleX:  0, duration: SQUISH, ease: 'power2.in'  }, FLIP_START + 0.08);
+  tl.to('#archer',  { scaleX: -1, duration: SQUISH, ease: 'power2.out' }, FLIP_START + 0.08 + SQUISH);
+
+  tl.to('#monk',    { scaleX:  0, duration: SQUISH, ease: 'power2.in'  }, FLIP_START + 0.16);
+  tl.to('#monk',    { scaleX: -1, duration: SQUISH, ease: 'power2.out' }, FLIP_START + 0.16 + SQUISH);
+
+  tl.to('#samurai', { scaleX:  0, duration: SQUISH, ease: 'power2.in'  }, FLIP_START + 0.24);
+  tl.to('#samurai', { scaleX: -1, duration: SQUISH, ease: 'power2.out' }, FLIP_START + 0.24 + SQUISH);
+
+  // Hold final : 9 unités → flip visible à ~81% du scroll (43.5 / 53)
+  tl.to({}, { duration: 9 }, 44.5);
+
+</script>
+</body>
+</html>
