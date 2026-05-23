@@ -525,15 +525,20 @@
   // ╚══════════════════════════════════════════════════════════════════════╝
 
   const P11_START = 33;   // right after torii
-  const P11_DUR   = 10;   // inclut le pré-passage dragon + marche personnages
+  const P11_DUR   = 10;   // durée de marche des personnages
   const BOB_AMT   = 0;    // 0 = respect strict des exports Figma, aucun rebond ajouté
 
   // ── Dragon : trajectoire recalée sur les exports PNG ─────────────────────
   // Note : #dragon a déjà left:-1055px; top:6px en CSS.
   // Les x/y ci-dessous sont donc les valeurs GSAP, pas les coordonnées écran brutes.
-  tl.to('#dragon', { opacity: 0, duration: 0 }, 32.9);   // reset opacity si scrub back
-  tl.set('#dragon', { x: 2677, y: 109 }, 32.95);         // frame dragon seul, avant les persos
-  tl.to('#dragon',  { opacity: 1, duration: 0.85, ease: 'power2.out' }, 33.0);
+  // Le dragon commence quand le samurai arrive vers x≈1170 / y≈599.
+  const DRAGON_START_T = 0.79;
+  const DRAGON_START   = P11_START + DRAGON_START_T * P11_DUR;
+  const DRAGON_DUR     = P11_DUR;
+
+  tl.to('#dragon', { opacity: 0, duration: 0 }, P11_START - 0.1);  // reset opacity si scrub back
+  tl.set('#dragon', { x: 2677, y: 109, opacity: 0 }, DRAGON_START - 0.05);
+  tl.to('#dragon',  { opacity: 1, duration: 0.85, ease: 'power2.out' }, DRAGON_START);
 
   const dragonKF = [
     { t: 0.000, x: 2677, y:  109 }, // frame export : dragon seul, hors champ droit
@@ -552,11 +557,11 @@
     const da = dragonKF[i], db = dragonKF[i + 1];
     tl.to('#dragon', {
       x: db.x, y: db.y,
-      duration: (db.t - da.t) * P11_DUR,
+      duration: (db.t - da.t) * DRAGON_DUR,
       ease: 'none'
-    }, P11_START + da.t * P11_DUR);
+    }, DRAGON_START + da.t * DRAGON_DUR);
   }
-  tl.to('#dragon', { opacity: 0, duration: 0.6 }, P11_START + 0.90 * P11_DUR);
+  tl.to('#dragon', { opacity: 0, duration: 0.6 }, DRAGON_START + 0.90 * DRAGON_DUR);
 
   // ╔══════════════════════════════════════════════════════════════════════════╗
   // ║  TRAJECTOIRES PERSONNAGES — RECALÉES SUR LES EXPORTS PNG FIGMA         ║
@@ -678,15 +683,17 @@
   // La frame finale garde les personnages visibles, le dragon disparaît.
 
   addCharacterWalkKF('#samurai', -200, 694, [
-    { t: 0.100, x: -108, y: 2400},
-    { t: 0.200, x:   28, y: 700 },
-    { t: 0.310, x:  178, y: 654 },
-    { t: 0.420, x:  348, y: 654 },
-    { t: 0.540, x:  472, y: 706 },
-    { t: 0.660, x:  611, y: 600 },
-    { t: 0.780, x: 1134, y: 590 },
-    { t: 0.900, x: 1709, y: 803 },
-    { t: 1.000, x: 1712, y: 753 },
+    { t: 0.200, x:   28, y: 698 },
+    { t: 0.310, x:  178, y: 645 },
+    { t: 0.420, x:  348, y: 660 },
+    { t: 0.540, x:  472, y: 657 },
+    { t: 0.660, x:  611, y: 605 },
+    { t: 0.704, x:  804, y: 526 },
+    { t: 0.723, x:  887, y: 492 },
+    { t: 0.780, x: 1134, y: 599 },
+    { t: 0.835, x: 1397, y: 714 },
+    { t: 0.900, x: 1709, y: 783 },
+    { t: 1.000, x: 1712, y: 783 },
   ]);
 
   addCharacterWalkKF('#monk', -200, 680, [
@@ -700,20 +707,29 @@
   ]);
 
   addCharacterWalkKF('#archer', -200, 717, [
-    { t: 0.420, x:  -34, y: 767 },
-    { t: 0.540, x:   94, y: 618 },
-    { t: 0.660, x:  299, y: 661 },
-    { t: 0.780, x:  719, y: 600 },
-    { t: 0.900, x: 1397, y: 685 },
-    { t: 1.000, x: 1396, y: 698 },
+    { t: 0.420, x:  -34, y: 688 },
+    { t: 0.540, x:   94, y: 644 },
+    { t: 0.660, x:  299, y: 638 },
+    { t: 0.713, x:  485, y: 634 },
+    { t: 0.749, x:  611, y: 582 },
+    { t: 0.780, x:  719, y: 538 },
+    { t: 0.805, x:  804, y: 503 },
+    { t: 0.825, x:  887, y: 469 },
+    { t: 0.865, x: 1134, y: 576 },
+    { t: 0.900, x: 1397, y: 691 },
+    { t: 1.000, x: 1396, y: 691 },
   ]);
 
   addCharacterWalkKF('#kid', -200, 766, [
-    { t: 0.540, x:    9, y: 800 },
-    { t: 0.660, x:  204, y: 740 },
-    { t: 0.780, x:  578, y: 720 },
-    { t: 0.900, x: 1258, y: 672 },
-    { t: 1.000, x: 1264, y: 692 },
+    { t: 0.540, x:    9, y: 764 },
+    { t: 0.660, x:  204, y: 706 },
+    { t: 0.780, x:  578, y: 676 },
+    { t: 0.805, x:  719, y: 618 },
+    { t: 0.825, x:  804, y: 583 },
+    { t: 0.845, x:  887, y: 549 },
+    { t: 0.885, x: 1134, y: 656 },
+    { t: 0.900, x: 1258, y: 710 },
+    { t: 1.000, x: 1264, y: 710 },
   ]);
 
   // ╔══════════════════════════════════════════════════════════════════╗
